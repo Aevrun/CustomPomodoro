@@ -37,6 +37,8 @@ for k, v in {
     "work_minutes": 25,
     "break_minutes": 5,
     "just_finished": False,  # shows completion screen + plays sound
+    "paused": False,
+    "remaining_secs": None,
 }.items():
     if k not in ss:
         ss[k] = v
@@ -81,10 +83,16 @@ if not ss.running and not ss.just_finished:
 if ss.running:
     st.write(f"Working on: **{ss.subject}** for {ss.work_minutes} minutes…")
 
-    # Compute remaining time
     now = datetime.now()
-    remaining = ss.end_time - now
-    remaining_secs = max(0, int(remaining.total_seconds()))
+
+    # If paused, freeze time and do NOT count down
+    if ss.paused:
+        remaining_secs = ss.remaining_secs
+    else:
+        remaining = ss.end_time - now
+        remaining_secs = max(0, int(remaining.total_seconds()))
+        ss.remaining_secs = remaining_secs
+
     mins, secs = divmod(remaining_secs, 60)
 
     st.subheader("Time Remaining")
@@ -92,12 +100,28 @@ if ss.running:
         f"<h1 style='margin-top:-15px;'>{mins:02d}:{secs:02d}</h1>",
         unsafe_allow_html=True,
     )
+
     total_secs = int(ss.work_minutes * 60)
     progress_val = 0.0 if total_secs <= 0 else (1 - (remaining_secs / total_secs))
     st.progress(progress_val)
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
+
+    # PAUSE / RESUME BUTTON
     with col1:
+        if ss.paused:
+            if st.button("Resume"):
+                ss.paused = False
+                ss.start_time = datetime.now()
+                ss.end_time = ss.start_time + timedelta(seconds=ss.remaining_secs)
+                st.rerun()
+        else:
+            if st.button("Pause"):
+                ss.paused = True
+                st.rerun()
+
+    # STOP & SAVE
+    with col2:
         if st.button("Stop & Save", key="stop_save_btn"):
             end = datetime.now()
             mins_done = max(1, int((end - ss.start_time).total_seconds() // 60))
@@ -110,16 +134,19 @@ if ss.running:
             df = pd.concat([df, new_row], ignore_index=True)
             df.to_csv(DATA_FILE, index=False)
             ss.running = False
+            ss.paused = False
             st.success("Session saved.")
             st.rerun()
 
-    with col2:
+    # CANCEL (don't save)
+    with col3:
         if st.button("Cancel (don’t save)", key="cancel_btn"):
             ss.running = False
+            ss.paused = False
             st.rerun()
 
-    # When timer hits zero → save automatically and show completion screen
-    if remaining_secs == 0 and ss.running:
+    # If finished and not paused → auto save
+    if remaining_secs == 0 and ss.running and not ss.paused:
         end = datetime.now()
         new_row = pd.DataFrame([{
             "Subject": ss.subject,
@@ -132,8 +159,9 @@ if ss.running:
         ss.running = False
         ss.just_finished = True
         st.rerun()
-    else:
-        # Tick every second
+
+    # Only tick when not paused
+    if not ss.paused:
         time.sleep(1)
         st.rerun()
 
