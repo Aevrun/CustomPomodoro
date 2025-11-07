@@ -64,6 +64,7 @@ update_page_title()
 
 # -------------------- COMPLETION SCREEN --------------------
 if ss.just_finished:
+    # MODIFICATION 2: Only show completion screen if just finished
     st.success("✅ Pomodoro complete and saved!")
     play_sound()
     st.balloons()
@@ -83,34 +84,37 @@ if ss.just_finished:
             st.rerun()
     st.divider()
 
-# -------------------- CATEGORY MANAGEMENT --------------------
-if os.path.exists(CATEGORY_FILE):
-    with open(CATEGORY_FILE) as f:
-        categories = [line.strip() for line in f if line.strip()]
-else:
-    categories = []
-
-st.write("### 🗂️ Categories")
-new_cat = st.text_input("Add new category:")
-if st.button("Add Category") and new_cat.strip():
-    categories.append(new_cat.strip())
-    with open(CATEGORY_FILE, "w") as f:
-        f.write("\n".join(sorted(set(categories))))
-    st.success("Category added!")
-    st.rerun()
-
-selected_cat = st.selectbox("Select Category (optional):", [""] + categories)
-ss.category = selected_cat
-
-# -------------------- MAIN CONTROLS --------------------
+# MODIFICATION 2: Wrap all non-timer elements in this 'if' block
 if not ss.running and not ss.just_finished:
+    # -------------------- CATEGORY MANAGEMENT --------------------
+    if os.path.exists(CATEGORY_FILE):
+        with open(CATEGORY_FILE) as f:
+            categories = [line.strip() for line in f if line.strip()]
+    else:
+        categories = []
+
+    st.write("### 🗂️ Categories")
+    new_cat = st.text_input("Add new category:")
+    if st.button("Add Category") and new_cat.strip():
+        categories.append(new_cat.strip())
+        with open(CATEGORY_FILE, "w") as f:
+            f.write("\n".join(sorted(set(categories))))
+        st.success("Category added!")
+        st.rerun()
+
+    # The rest of the Category section (moved inside the 'if' block)
+    selected_cat = st.selectbox("Select Category (optional):", [""] + categories)
+    ss.category = selected_cat
+
+    # -------------------- MAIN CONTROLS --------------------
     ss.subject = st.text_input("Enter subject or skill:", value=ss.subject)
     ss.work_minutes = st.number_input("Work duration (minutes):", 1, 240, ss.work_minutes)
     ss.break_minutes = st.number_input("Break duration (minutes):", 1, 60, ss.break_minutes)
 
     cols = st.columns(2)
     with cols[0]:
-        if st.button("Start Pomodoro", key="start_btn") and ss.subject.strip():
+        # Changed condition to use ss.category instead of ss.subject if a category is selected
+        if st.button("Start Pomodoro", key="start_btn") and (ss.subject.strip() or ss.category.strip()):
             ss.start_time = datetime.now()
             ss.end_time = ss.start_time + timedelta(minutes=int(ss.work_minutes))
             ss.running = True
@@ -118,6 +122,7 @@ if not ss.running and not ss.just_finished:
 
 # -------------------- TIMER VIEW --------------------
 if ss.running:
+    # This section is kept outside the 'if not ss.running' block so it always displays when running.
     st.write(f"Working on: **{ss.subject}** ({ss.category}) for {ss.work_minutes} minutes…")
 
     now = datetime.now()
@@ -198,89 +203,83 @@ if ss.running:
         time.sleep(1)
         st.rerun()
 
-# -------------------- MANUAL ADD FORM --------------------
-st.divider()
-st.subheader("➕ Add Session Manually")
+# MODIFICATION 2: Wrap all non-timer elements in this 'if' block
+if not ss.running and not ss.just_finished:
+    # -------------------- MANUAL ADD FORM --------------------
+    st.divider()
+    st.subheader("➕ Add Session Manually")
 
-with st.form("manual_entry_form"):
-    manual_subject = st.text_input("Subject:")
-    manual_category = st.selectbox("Category:", [""] + categories)
-    manual_date = st.date_input("Date", value=datetime.now().date())
-    manual_start_time = st.time_input("Start Time", value=datetime.now().time())
-    manual_minutes = st.number_input("Duration (minutes)", 1, 600, 60)
-    submitted = st.form_submit_button("Add Entry")
+    with st.form("manual_entry_form"):
+        manual_subject = st.text_input("Subject:")
+        manual_category = st.selectbox("Category:", [""] + categories)
+        manual_date = st.date_input("Date", value=datetime.now().date())
+        manual_start_time = st.time_input("Start Time", value=datetime.now().time())
+        manual_minutes = st.number_input("Duration (minutes)", 1, 600, 60)
+        submitted = st.form_submit_button("Add Entry")
 
-    if submitted and manual_subject.strip():
-        start_dt = datetime.combine(manual_date, manual_start_time)
-        end_dt = start_dt + timedelta(minutes=int(manual_minutes))
-        new_row = pd.DataFrame([{
-            "Subject": manual_subject,
-            "Category": manual_category,
-            "Start": start_dt,
-            "End": end_dt,
-            "Minutes": manual_minutes,
-            "Notes": "",
-            "Summary": "",
-            "Action": ""
-        }])
-        df = pd.concat([df, new_row], ignore_index=True)
-        df.to_csv(DATA_FILE, index=False)
-        st.success(f"Added {manual_minutes} minutes of **{manual_subject}**.")
-        st.rerun()
+        if submitted and manual_subject.strip():
+            start_dt = datetime.combine(manual_date, manual_start_time)
+            end_dt = start_dt + timedelta(minutes=int(manual_minutes))
+            new_row = pd.DataFrame([{
+                "Subject": manual_subject,
+                "Category": manual_category,
+                "Start": start_dt,
+                "End": end_dt,
+                "Minutes": manual_minutes,
+                "Notes": "",
+                "Summary": "",
+                "Action": ""
+            }])
+            df = pd.concat([df, new_row], ignore_index=True)
+            df.to_csv(DATA_FILE, index=False)
+            st.success(f"Added {manual_minutes} minutes of **{manual_subject}**.")
+            st.rerun()
 
-# -------------------- EDITABLE TABLE --------------------
-st.divider()
-st.subheader("✏️ Edit Entries")
-if not df.empty:
-    edited_df = st.data_editor(df, num_rows="dynamic", use_container_width=True)
-    if st.button("💾 Save Changes"):
-        edited_df.to_csv(DATA_FILE, index=False)
-        st.success("Changes saved.")
-        st.rerun()
+    # -------------------- EDITABLE TABLE --------------------
+    st.divider()
+    st.subheader("✏️ Edit Entries")
+    if not df.empty:
+        edited_df = st.data_editor(df, num_rows="dynamic", use_container_width=True)
+        if st.button("💾 Save Changes"):
+            edited_df.to_csv(DATA_FILE, index=False)
+            st.success("Changes saved.")
+            st.rerun()
 
-    # Delete an entry
-    st.write("### 🗑️ Delete an Entry")
-    idx_to_delete = st.selectbox("Select entry index to delete:", df.index)
-    if st.button("Delete Selected Entry"):
-        df = df.drop(idx_to_delete).reset_index(drop=True)
-        df.to_csv(DATA_FILE, index=False)
-        st.success("Entry deleted.")
-        st.rerun()
-else:
-    st.caption("No sessions saved yet.")
+    # -------------------- SUMMARY --------------------
+    st.divider()
+    st.subheader("📊 Summary")
+    if not df.empty:
+        df["Date"] = df["Start"].dt.date
+        today = pd.Timestamp.today().normalize()
+        today_df = df[(df["Start"] >= today) & (df["Start"] < today + pd.Timedelta(days=1))]
+        st.write("**Today**")
+        if not today_df.empty:
+            st.dataframe(today_df.tail(20))
+            # MODIFICATION 1: Change to group by Category
+            st.bar_chart(today_df.groupby("Category")["Minutes"].sum())
+        else:
+            st.caption("No sessions yet today.")
 
-# -------------------- SUMMARY --------------------
-st.divider()
-st.subheader("📊 Summary")
-if not df.empty:
-    df["Date"] = df["Start"].dt.date
-    today = pd.Timestamp.today().normalize()
-    today_df = df[(df["Start"] >= today) & (df["Start"] < today + pd.Timedelta(days=1))]
-    st.write("**Today**")
-    if not today_df.empty:
-        st.dataframe(today_df.tail(20))
-        st.bar_chart(today_df.groupby("Subject")["Minutes"].sum())
+        st.write("### Daily Summary (last 7 days)")
+        last_week = df[df["Date"] >= (pd.Timestamp.today().date() - pd.Timedelta(days=6))]
+        daily_totals = last_week.groupby("Date")["Minutes"].sum()
+        if not daily_totals.empty:
+            st.line_chart(daily_totals)
+        else:
+            st.caption("No data for the last 7 days.")
+
+        st.write("### Weekly Summary by Category")
+        df["Week"] = df["Start"].dt.strftime("%Y-%U")
+        # MODIFICATION 1: Change to group by Category
+        weekly_totals = df.groupby(["Week", "Category"])["Minutes"].sum().unstack(fill_value=0)
+        if not weekly_totals.empty:
+            st.bar_chart(weekly_totals)
+        else:
+            st.caption("No weekly data yet.")
+
+        st.write("### All Time Totals")
+        # MODIFICATION 1: Change to group by Category
+        totals = df.groupby(["Category"])["Minutes"].sum().sort_values(ascending=False)
+        st.write(totals.to_frame("Minutes"))
     else:
-        st.caption("No sessions yet today.")
-
-    st.write("### Daily Summary (last 7 days)")
-    last_week = df[df["Date"] >= (pd.Timestamp.today().date() - pd.Timedelta(days=6))]
-    daily_totals = last_week.groupby("Date")["Minutes"].sum()
-    if not daily_totals.empty:
-        st.line_chart(daily_totals)
-    else:
-        st.caption("No data for the last 7 days.")
-
-    st.write("### Weekly Summary by Subject")
-    df["Week"] = df["Start"].dt.strftime("%Y-%U")
-    weekly_totals = df.groupby(["Week", "Subject"])["Minutes"].sum().unstack(fill_value=0)
-    if not weekly_totals.empty:
-        st.bar_chart(weekly_totals)
-    else:
-        st.caption("No weekly data yet.")
-
-    st.write("### All Time Totals")
-    totals = df.groupby(["Subject"])["Minutes"].sum().sort_values(ascending=False)
-    st.write(totals.to_frame("Minutes"))
-else:
-    st.caption("No sessions saved yet.")
+        st.caption("No sessions saved yet.")
